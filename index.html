@@ -3,115 +3,186 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vocale App</title>
-    
+    <title>Vocale Pro Editor</title>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#007bff">
-    <link rel="apple-touch-icon" href="https://via.placeholder.com/192x192.png?text=Vocale">
 
     <style>
-        body {
-            font-family: sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            margin: 0;
-            background-color: #f0f2f5;
+        :root { --primary: #007bff; --success: #28a745; --danger: #dc3545; --gray: #6c757d; }
+        body { font-family: 'Segoe UI', Roboto, sans-serif; background-color: #e9ecef; margin: 0; padding: 15px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+        .container { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 8px 30px rgba(0,0,0,0.1); width: 100%; max-width: 800px; box-sizing: border-box; }
+        
+        h2 { margin-top: 0; color: #333; font-size: 1.5rem; }
+        
+        #status-container { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 10px; height: 30px; }
+        #status { font-size: 14px; color: var(--gray); }
+        .recording-dot { width: 12px; height: 12px; background: var(--danger); border-radius: 50%; display: none; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(1.2); } 100% { opacity: 1; transform: scale(1); } }
+
+        textarea {
+            width: 100%;
+            height: 60vh; /* Finestra molto grande */
+            padding: 15px;
+            border: 2px solid #dee2e6;
+            border-radius: 10px;
+            font-size: 18px;
+            line-height: 1.6;
+            resize: none;
+            box-sizing: border-box;
+            background-color: #fdfdfd;
+            margin-bottom: 10px;
         }
-        .container {
-            background: white;
-            padding: 20px;
-            border-radius: 15px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            text-align: center;
-            width: 80%;
-        }
-        #status {
-            margin: 20px 0;
-            color: #555;
-            font-style: italic;
-        }
-        #result {
-            border: 1px solid #ccc;
-            padding: 10px;
-            min-height: 50px;
-            margin-bottom: 20px;
-            border-radius: 8px;
-            background: #fafafa;
-        }
-        button {
-            padding: 12px 25px;
-            font-size: 16px;
-            border: none;
-            border-radius: 25px;
-            cursor: pointer;
-            transition: 0.3s;
-            margin: 5px;
-        }
-        #startBtn { background-color: #28a745; color: white; }
-        #stopBtn { background-color: #dc3545; color: white; }
-        button:disabled { background-color: #ccc; }
+
+        .info-bar { display: flex; justify-content: space-between; font-size: 12px; color: var(--gray); margin-bottom: 15px; padding: 0 5px; }
+
+        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; }
+        button { padding: 15px; border: none; border-radius: 10px; cursor: pointer; font-weight: bold; color: white; font-size: 16px; transition: transform 0.1s; }
+        button:active { transform: scale(0.98); }
+        
+        #startBtn { background-color: var(--success); grid-column: span 1; }
+        #stopBtn { background-color: var(--danger); grid-column: span 1; }
+        #saveBtn { background-color: var(--primary); grid-column: span 2; margin-top: 5px; }
+        #resetBtn { background-color: var(--gray); grid-column: span 2; font-size: 14px; padding: 10px; opacity: 0.8; }
+        
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>Riconoscimento Vocale</h2>
-    <div id="status">Pronto per iniziare</div>
-    <div id="result">Il testo apparirà qui...</div>
+    <h2>Dettatura Pro</h2>
     
-    <button id="startBtn">Avvia Registrazione</button>
-    <button id="stopBtn" disabled>Ferma</button>
+    <div id="status-container">
+        <div class="recording-dot" id="dot"></div>
+        <div id="status">Pronto all'uso</div>
+    </div>
+
+    <textarea id="resultText" placeholder="Inizia a parlare... il testo verrà aggiunto qui."></textarea>
+    
+    <div class="info-bar">
+        <span id="wordCount">Parole: 0</span>
+        <span id="lastSave">Auto-salvataggio attivo</span>
+    </div>
+    
+    <div class="controls">
+        <button id="startBtn">🎤 AVVIA</button>
+        <button id="stopBtn" disabled>⏹️ STOP</button>
+        <button id="saveBtn">💾 SCARICA FILE .TXT</button>
+        <button id="resetBtn">🗑️ CANCELLA TUTTO</button>
+    </div>
 </div>
 
 <script>
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const saveBtn = document.getElementById('saveBtn');
+    const resultText = document.getElementById('resultText');
     const status = document.getElementById('status');
-    const result = document.getElementById('result');
+    const dot = document.getElementById('dot');
+    const wordCount = document.getElementById('wordCount');
 
-    // Controllo compatibilità browser
+    // 2. RECUPERO DATI ALL'AVVIO
+    window.onload = () => {
+        const savedText = localStorage.getItem('vocale_backup');
+        if (savedText) {
+            resultText.value = savedText;
+            updateStats();
+        }
+    };
+
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
-        status.textContent = "Errore: Browser non supportato.";
+        status.textContent = "Browser non supportato.";
     } else {
         const recognition = new SpeechRecognition();
         recognition.lang = 'it-IT';
-        recognition.continuous = true;
+        recognition.continuous = false; // Fermiamo noi manualmente o quando finisce la frase
         recognition.interimResults = true;
+
+        let lastText = "";
+
+        recognition.onresult = (event) => {
+            let interim = "";
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                let transcript = event.results[i][0].transcript;
+                
+                // 1. PUNTEGGIATURA VOCALE
+                transcript = transcript
+                    .replace(/punto/gi, '.')
+                    .replace(/virgola/gi, ',')
+                    .replace(/nuova linea/gi, '\n')
+                    .replace(/punto interrogativo/gi, '?');
+
+                if (event.results[i].isFinal) {
+                    // AGGIUNGE AL TESTO ESISTENTE
+                    resultText.value += transcript + " ";
+                    saveToLocal();
+                } else {
+                    interim += transcript;
+                }
+            }
+            updateStats();
+        };
 
         startBtn.onclick = () => {
             recognition.start();
-            status.textContent = "Ascolto in corso...";
+            status.textContent = "Ascolto...";
+            dot.style.display = "block";
             startBtn.disabled = true;
             stopBtn.disabled = false;
         };
 
         stopBtn.onclick = () => {
             recognition.stop();
+            status.textContent = "Pausa";
+            dot.style.display = "none";
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
         };
 
-        recognition.onresult = (event) => {
-            let transcript = "";
-            for (let i = event.resultIndex; i < event.results.length; i++) {
-                transcript += event.results[i][0].transcript;
+        function updateStats() {
+            const text = resultText.value.trim();
+            const count = text ? text.split(/\s+/).length : 0;
+            wordCount.textContent = "Parole: " + count;
+        }
+
+        function saveToLocal() {
+            localStorage.setItem('vocale_backup', resultText.value);
+        }
+
+        // 3. RESET CON CONFERMA
+        resetBtn.onclick = () => {
+            if(confirm("Sei sicuro di voler cancellare tutto il testo?")) {
+                resultText.value = "";
+                localStorage.removeItem('vocale_backup');
+                updateStats();
             }
-            result.textContent = transcript;
+        };
+
+        // 4. SALVATAGGIO CON DATA E ORA
+        saveBtn.onclick = () => {
+            const text = resultText.value;
+            if(!text) return alert("Scrivi qualcosa prima!");
+            
+            const ora = new Date().toLocaleString('it-IT').replace(/[/:]/g, '-');
+            const blob = new Blob([text], { type: 'text/plain' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `Nota_${ora}.txt`;
+            link.click();
         };
 
         recognition.onend = () => {
-            status.textContent = "Registrazione terminata.";
-            startBtn.disabled = false;
-            stopBtn.disabled = true;
+            dot.style.display = "none";
+            if(startBtn.disabled) recognition.start(); // Riavvio automatico se non abbiamo premuto STOP
         };
 
-        recognition.onerror = (event) => {
-            status.textContent = "Errore: " + event.error;
-            startBtn.disabled = false;
-            stopBtn.disabled = true;
+        // Salvataggio manuale se l'utente scrive con la tastiera
+        resultText.oninput = () => {
+            saveToLocal();
+            updateStats();
         };
     }
 </script>
